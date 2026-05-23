@@ -165,11 +165,13 @@ export default function App() {
         stateTimer -= dt
         if (stateTimer <= 0) {
           const next = pickNext(stateRef.current)
+          const nextAnim = ANIMS[next]
           stateRef.current = next
           const d = STATE_DURATIONS[next]
           stateTimer = rand(d[0], d[1])
           frameAccum = 0
-          frameRef.current = 0
+          // Keep frame continuity: don't reset to 0, just wrap to new frame count
+          frameRef.current = frameRef.current % nextAnim.frames
         }
 
         syncRender()
