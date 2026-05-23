@@ -13,17 +13,25 @@ const WINDOW_H = 120
 
 // ── Animation definitions ──────────────────────────────────
 const ANIMS = {
-  sniff:     { row: 6, frames: 8, msPerFrame: 100, speed: 0  },
-  walk:      { row: 4, frames: 8, msPerFrame: 100, speed: 3  },
-  run:       { row: 5, frames: 8, msPerFrame: 70,  speed: 7  },
-  sniffwalk: { row: 7, frames: 8, msPerFrame: 100, speed: 3  },
+  jump:     { row: 0, frames: 11, msPerFrame: 80,  speed: 7  },
+  idle:     { row: 1, frames: 5,  msPerFrame: 150, speed: 0  },
+  idle2:    { row: 2, frames: 5,  msPerFrame: 150, speed: 0  },
+  sit:      { row: 3, frames: 9,  msPerFrame: 120, speed: 0  },
+  walk:     { row: 4, frames: 5,  msPerFrame: 100, speed: 3  },
+  run:      { row: 5, frames: 8,  msPerFrame: 70,  speed: 7  },
+  sniff:    { row: 6, frames: 8,  msPerFrame: 100, speed: 0  },
+  sniffwalk:{ row: 7, frames: 8,  msPerFrame: 100, speed: 3  },
 }
 
 const STATE_DURATIONS = {
-  sniff:     [2000, 5000],
-  walk:      [1500, 4000],
-  run:       [1000, 3000],
-  sniffwalk: [1500, 4000],
+  jump:     [1000, 3000],
+  idle:     [2000, 4000],
+  idle2:    [2000, 4000],
+  sit:      [2000, 5000],
+  walk:     [1500, 4000],
+  run:      [1000, 3000],
+  sniff:    [2000, 5000],
+  sniffwalk:[1500, 4000],
 }
 
 const STATES = Object.keys(ANIMS)
