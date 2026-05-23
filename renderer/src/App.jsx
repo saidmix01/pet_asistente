@@ -36,19 +36,42 @@ const STATE_DURATIONS = {
 
 const STATES = Object.keys(ANIMS)
 
+// ── WebSocket config ───────────────────────────────────────
+const WS_URL = 'ws://127.0.0.1:8000/ws/state'
+const RECONNECT_MS = 3000
+
+// ── Event → Animation reactions ────────────────────────────
+function getReaction(eventType, data) {
+  const t = (data?.activity_type || '').toLowerCase()
+  switch (eventType) {
+    case 'activity.update':
+      if (t === 'coding')  return { state: 'jump',     duration: 1500 }
+      if (t === 'browsing') return { state: 'sniffwalk',duration: 2000 }
+      if (t === 'reading' || t === 'design')
+                            return { state: 'sniff',    duration: 2000 }
+      return { state: 'walk', duration: 1500 }
+    case 'activity.switch':
+      return { state: 'sniff', duration: 1200 }
+    case 'activity.idle':
+      return { state: 'idle', duration: 4000 }
+    default:
+      return null
+  }
+}
+
 function rand(min, max) { return Math.random() * (max - min) + min }
 function pickNext(current) {
   const others = STATES.filter(s => s !== current)
   return others[Math.floor(Math.random() * others.length)]
 }
 
-// Browser fallback position
 let gFallbackX = 0
 
 export default function App() {
-  const elRef = useRef(null)
+  const elRef     = useRef(null)
+  const dotRef    = useRef(null)
 
-  // ── Refs (game-loop state, survives renders) ─────────────
+  // ── Refs (game-loop state) ───────────────────────────────
   const stateRef    = useRef('sniff')
   const dirRef      = useRef(1)
   const frameRef    = useRef(0)
@@ -59,7 +82,7 @@ export default function App() {
   const lastPtrRef  = useRef({ x: 0, y: 0 })
   const readyRef    = useRef(false)
 
-  // ── Apply visual state to DOM directly (no React re-render) ──
+  // ── Apply visual state to DOM ────────────────────────────
   const applyVisual = () => {
     const el = elRef.current
     if (!el) return
@@ -69,21 +92,73 @@ export default function App() {
     const offX = api ? 0 : posRef.current.x
     const offY = api ? 0 : posRef.current.y
 
-    el.style.backgroundPosition = `${-(SHEET.offsetX + frameRef.current * SHEET.frameWidth)}px ${-(SHEET.offsetY + anim.row * SHEET.frameHeight)}px`
-    el.style.transform = `translate(${offX}px, ${offY}px) scaleX(${mirrored ? -1 : 1})`
+    el.style.backgroundPosition =
+      `${-(SHEET.offsetX + frameRef.current * SHEET.frameWidth)}px ` +
+      `${-(SHEET.offsetY + anim.row * SHEET.frameHeight)}px`
+    el.style.transform =
+      `translate(${offX}px, ${offY}px) scaleX(${mirrored ? -1 : 1})`
   }
 
-  // ── Game loop ────────────────────────────────────────────
+  const setConnDot = (online) => {
+    const dot = dotRef.current
+    if (!dot) return
+    dot.className = `conn-dot ${online ? 'online' : 'offline'}`
+  }
+
+  // ── Game loop + WebSocket ────────────────────────────────
   useEffect(() => {
     let rafId = null
     let lastTime = 0
     let frameAccum = 0
     let stateTimer = 0
 
-    // Init screen & position before loop starts
-    ;(async () => {
-      screenRef.current = { w: window.screen.width || 1920, h: window.screen.height || 1080 }
+    // ── WebSocket ──────────────────────────────────────────
+    let ws = null
+    let reconnectTimer = null
 
+    function connectWs() {
+      if (ws) try { ws.close() } catch {}
+      ws = new WebSocket(WS_URL)
+
+      ws.onopen = () => {
+        setConnDot(true)
+      }
+
+      ws.onmessage = (e) => {
+        try {
+          const msg = JSON.parse(e.data)
+          if (msg.type === 'event' && msg.data?.event) {
+            const reaction = getReaction(msg.data.event, msg.data.data)
+            if (reaction) {
+              stateRef.current = reaction.state
+              stateTimer = reaction.duration > 0
+                ? reaction.duration
+                : rand(STATE_DURATIONS[reaction.state][0], STATE_DURATIONS[reaction.state][1])
+              frameAccum = 0
+              frameRef.current = 0
+            }
+          }
+        } catch { /* malformed msg */ }
+      }
+
+      ws.onclose = () => {
+        setConnDot(false)
+        reconnectTimer = setTimeout(connectWs, RECONNECT_MS)
+      }
+
+      ws.onerror = () => {
+        ws?.close()
+      }
+    }
+
+    connectWs()
+
+    // ── Init ───────────────────────────────────────────────
+    ;(async () => {
+      screenRef.current = {
+        w: window.screen.width || 1920,
+        h: window.screen.height || 1080,
+      }
       try {
         if (api?.getPosition) {
           const p = await api.getPosition()
@@ -93,27 +168,24 @@ export default function App() {
           const s = await api.getScreenSize()
           screenRef.current = { w: s.width ?? 1920, h: s.height ?? 1080 }
         }
-      } catch { /* fallback ok */ }
+      } catch { /* ok */ }
 
-      // Random initial direction
       dirRef.current = Math.random() > 0.5 ? 1 : -1
-
-      // First state timer
       const d = STATE_DURATIONS[stateRef.current]
       stateTimer = rand(d[0], d[1])
-
       readyRef.current = true
       lastTime = performance.now()
       applyVisual()
     })()
 
+    // ── Game loop ──────────────────────────────────────────
     const loop = (now) => {
       if (!readyRef.current) {
         rafId = requestAnimationFrame(loop)
         return
       }
 
-      const dt = Math.min(now - lastTime, 50) // cap dt to avoid spiral
+      const dt = Math.min(now - lastTime, 50)
       lastTime = now
 
       if (!draggingRef.current) {
@@ -132,23 +204,12 @@ export default function App() {
           const dx = anim.speed * dirRef.current
           let nx = posRef.current.x + dx
           const sw = screenRef.current.w
-
-          // Edge → flip direction
-          if (nx + WINDOW_W >= sw) {
-            nx = sw - WINDOW_W
-            dirRef.current = -1
-          } else if (nx <= 0) {
-            nx = 0
-            dirRef.current = 1
-          }
+          if (nx + WINDOW_W >= sw) { nx = sw - WINDOW_W; dirRef.current = -1 }
+          else if (nx <= 0) { nx = 0; dirRef.current = 1 }
 
           posRef.current = { x: nx, y: posRef.current.y }
-
-          if (api?.moveBy) {
-            api.moveBy(dx, 0).catch(() => {})
-          } else {
-            gFallbackX += dx
-          }
+          if (api?.moveBy) { api.moveBy(dx, 0).catch(() => {}) }
+          else { gFallbackX += dx }
         }
 
         // ── State transitions ──
@@ -163,7 +224,6 @@ export default function App() {
           frameRef.current = frameRef.current % nextAnim.frames
         }
 
-        // Apply to DOM
         applyVisual()
       }
 
@@ -171,7 +231,13 @@ export default function App() {
     }
 
     rafId = requestAnimationFrame(loop)
-    return () => { if (rafId) cancelAnimationFrame(rafId) }
+
+    // ── Cleanup ────────────────────────────────────────────
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId)
+      if (ws) ws.close()
+      if (reconnectTimer) clearTimeout(reconnectTimer)
+    }
   }, [])
 
   // ── Drag / interact handlers ────────────────────────────
@@ -179,26 +245,13 @@ export default function App() {
     if (!api?.setInteractive) return
     api.setInteractive(val).catch(() => {})
   }
-
   const moveWindowBy = (dx, dy) => {
-    if (api?.moveBy) {
-      api.moveBy(dx, dy).catch(() => {})
-      return
-    }
+    if (api?.moveBy) { api.moveBy(dx, dy).catch(() => {}); return }
     gFallbackX += dx
     posRef.current = { x: gFallbackX, y: posRef.current.y + dy }
   }
-
-  const onPointerEnter = () => {
-    hoveredRef.current = true
-    setInteractive(true)
-  }
-
-  const onPointerLeave = () => {
-    hoveredRef.current = false
-    if (!draggingRef.current) setInteractive(false)
-  }
-
+  const onPointerEnter = () => { hoveredRef.current = true; setInteractive(true) }
+  const onPointerLeave = () => { if (!draggingRef.current) setInteractive(false) }
   const onPointerDown = (e) => {
     if (e.button !== 0) return
     draggingRef.current = true
@@ -206,24 +259,18 @@ export default function App() {
     setInteractive(true)
     e.currentTarget.setPointerCapture(e.pointerId)
   }
-
   const onPointerMove = (e) => {
     if (!draggingRef.current) return
     const dx = e.screenX - lastPtrRef.current.x
     const dy = e.screenY - lastPtrRef.current.y
     lastPtrRef.current = { x: e.screenX, y: e.screenY }
-
-    posRef.current = {
-      x: posRef.current.x + dx,
-      y: posRef.current.y + dy,
-    }
+    posRef.current = { x: posRef.current.x + dx, y: posRef.current.y + dy }
     moveWindowBy(dx, dy)
   }
-
   const stopDrag = (e) => {
     if (!draggingRef.current) return
     draggingRef.current = false
-    try { e.currentTarget.releasePointerCapture(e.pointerId) } catch { /* noop */ }
+    try { e.currentTarget.releasePointerCapture(e.pointerId) } catch {}
     if (!hoveredRef.current) setInteractive(false)
   }
 
@@ -239,7 +286,8 @@ export default function App() {
           transform: 'translate(0px, 0px) scaleX(1)',
           backgroundImage: `url(${SPRITE_URL})`,
           backgroundRepeat: 'no-repeat',
-          backgroundPosition: `${-(SHEET.offsetX)}px ${-(SHEET.offsetY + 6 * SHEET.frameHeight)}px`,
+          backgroundPosition:
+            `${-(SHEET.offsetX)}px ${-(SHEET.offsetY + 6 * SHEET.frameHeight)}px`,
           backgroundSize: `${SHEET.width}px ${SHEET.height}px`,
         }}
         onPointerEnter={onPointerEnter}
@@ -249,6 +297,7 @@ export default function App() {
         onPointerUp={stopDrag}
         onPointerCancel={stopDrag}
       />
+      <div ref={dotRef} className="conn-dot offline" />
     </div>
   )
 }
