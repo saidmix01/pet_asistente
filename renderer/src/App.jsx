@@ -13,17 +13,16 @@ const SHEET = {
 }
 const FPS = 12
 
-// Sniff animation: row 3, cols 0–8 (9 frames, loops infinitely)
+// Sniff animation: row 7, cols 0–7 (8 frames, loops infinitely)
 const ANIM_FRAMES = [
-  { row: 3, col: 0 },
-  { row: 3, col: 1 },
-  { row: 3, col: 2 },
-  { row: 3, col: 3 },
-  { row: 3, col: 4 },
-  { row: 3, col: 5 },
-  { row: 3, col: 6 },
-  { row: 3, col: 7 },
-  { row: 3, col: 8 },
+  { row: 7, col: 0 },
+  { row: 7, col: 1 },
+  { row: 7, col: 2 },
+  { row: 7, col: 3 },
+  { row: 7, col: 4 },
+  { row: 7, col: 5 },
+  { row: 7, col: 6 },
+  { row: 7, col: 7 },
 ]
 
 export default function App() {
