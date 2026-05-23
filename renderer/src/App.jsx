@@ -8,12 +8,23 @@ const SHEET = {
   height: 512,
   frameWidth: 64,
   frameHeight: 64,
-  columns: 11,
-  rows: 8,
   offsetX: 95,
   offsetY: 0,
 }
 const FPS = 12
+
+// Sniff animation: row 3, cols 0–8 (9 frames, loops infinitely)
+const ANIM_FRAMES = [
+  { row: 3, col: 0 },
+  { row: 3, col: 1 },
+  { row: 3, col: 2 },
+  { row: 3, col: 3 },
+  { row: 3, col: 4 },
+  { row: 3, col: 5 },
+  { row: 3, col: 6 },
+  { row: 3, col: 7 },
+  { row: 3, col: 8 },
+]
 
 export default function App() {
   const [fallbackOffset, setFallbackOffset] = useState({ x: 0, y: 0 })
@@ -24,9 +35,8 @@ export default function App() {
 
   useEffect(() => {
     const intervalMs = Math.max(16, Math.round(1000 / FPS))
-    const totalFrames = SHEET.columns * SHEET.rows
     const id = setInterval(() => {
-      setFrame((prev) => (prev + 1) % totalFrames)
+      setFrame((prev) => (prev + 1) % ANIM_FRAMES.length)
     }, intervalMs)
 
     return () => clearInterval(id)
@@ -82,10 +92,9 @@ export default function App() {
     if (!hoveredRef.current) setInteractive(false)
   }
 
-  const col = frame % SHEET.columns
-  const row = Math.floor(frame / SHEET.columns) % SHEET.rows
-  const bgX = -(SHEET.offsetX + col * SHEET.frameWidth)
-  const bgY = -(SHEET.offsetY + row * SHEET.frameHeight)
+  const animFrame = ANIM_FRAMES[frame]
+  const bgX = -(SHEET.offsetX + animFrame.col * SHEET.frameWidth)
+  const bgY = -(SHEET.offsetY + animFrame.row * SHEET.frameHeight)
 
   return (
     <div className="stage">
