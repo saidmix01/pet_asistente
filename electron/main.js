@@ -48,6 +48,18 @@ ipcMain.handle('pet:ping', async () => {
   return 'pong'
 })
 
+ipcMain.handle('pet:get-position', async () => {
+  if (!mainWindow) return { x: 0, y: 0 }
+  const [x, y] = mainWindow.getPosition()
+  return { x, y }
+})
+
+ipcMain.handle('pet:get-screen-size', async () => {
+  const { screen } = require('electron')
+  const bounds = screen.getPrimaryDisplay().workAreaSize
+  return { width: bounds.width, height: bounds.height }
+})
+
 ipcMain.handle('pet:set-interactive', async (event, payload) => {
   if (!mainWindow) return false
 
